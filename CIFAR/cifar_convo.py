@@ -74,7 +74,7 @@ def max_pool_2x2(x):
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 
-# 32x32x1 -> 16x16x32
+# 32x32x3 -> 16x16x32
 W_conv1 = weight_variable([5, 5, CHANNELS, 32])
 b_conv1 = bias_variable([32])
 
