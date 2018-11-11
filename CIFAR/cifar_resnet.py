@@ -12,8 +12,7 @@ def parse_images(filename):
     image_string = tf.read_file(filename)
     image_decoded = tf.image.decode_png(image_string, channels=CHANNELS)
     image_float = tf.image.convert_image_dtype(image_decoded, tf.float32)
-    image_flipped = tf.image.flip_left_right(image_float)
-    return image_flipped
+    return image_float
 
 
 def text_to_one_hot(text_label):
@@ -58,36 +57,52 @@ testing_init_op = iterator.make_initializer(testing_dataset)
 
 
 def residual_block(input, channels, downsample):
+    shortcut = input
     strides = (1, 1)
     if downsample:
         strides = (2, 2)
+        shortcut = tf.layers.conv2d(input, channels, (1, 1), strides=strides, padding='same')
+        shortcut = tf.layers.batch_normalization(shortcut, training=True)
         
-    conv1 = tf.layers.conv2d(input, channels, (3, 3), strides=strides, padding='same')
+    conv1 = tf.layers.conv2d(input, channels, (3, 3), strides=(1, 1), padding='same')
     conv1 = tf.layers.batch_normalization(conv1, training=True)
+    conv1 = tf.nn.relu(conv1)
 
-    conv2 = tf.layers.conv2d(conv1, channels, (3, 3), strides=(1, 1), padding='same')
+    conv2 = tf.layers.conv2d(conv1, channels, (3, 3), strides=strides, padding='same')
     conv2 = tf.layers.batch_normalization(conv2, training=True)
 
-    shortcut = tf.layers.conv2d(input, channels, (1, 1), strides=strides, padding='same')
-    shortcut = tf.layers.batch_normalization(shortcut, training=True)
 
-    output = shortcut + conv2
-    output = tf.nn.leaky_relu(output)
+    conv2 += shortcut
+    output = tf.nn.relu(conv2)
 
     return output
 
 x_image = tf.reshape(x, [-1, 32, 32, 3])
 
-# 32x32x3 -> 16x16x32
-res1 = residual_block(x_image, 32, True)
+conv1 = tf.nn.relu(tf.layers.conv2d(x_image, 16, (3, 3), padding="same"))
+
+# 32x32x3 -> 32x32x16
+res1_1 = residual_block(conv1, 16, False)
+res1_2 = residual_block(res1_1, 16, False)
+res1_3 = residual_block(res1_2, 16, False)
+
+...
+
+# 32x32x16 -> 16x16x32
+res2_1 = residual_block(res1_3, 32, True)
+res2_2 = residual_block(res2_1, 32, False)
+res2_3 = residual_block(res2_2, 32, False)
+
+...
 
 # 16x16x32 -> 8x8x64
-res2 = residual_block(res1, 64, True)
+res3_1 = residual_block(res2_3, 64, True)
+res3_2 = residual_block(res3_1, 64, False)
+res3_3 = residual_block(res3_2, 64, False)
 
-# 8x8x64 -> 4x4x128
-res3 = residual_block(res2, 128, True)
+...
 
-res3_flat = tf.reshape(res3, [-1, 2*2*256])
+res3_flat = tf.reshape(res3_3, [-1, 8*8*64])
 
 linear1 = tf.layers.dense(res3_flat, 1024, tf.nn.leaky_relu)
 keep_prob = tf.placeholder(tf.float32)
@@ -103,7 +118,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    for epoch in range(1, 11):
+    for epoch in range(1, 31):
         sess.run(training_init_op)
         i = 0
         while True:
